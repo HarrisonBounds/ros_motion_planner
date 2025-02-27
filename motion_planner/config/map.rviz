@@ -1,0 +1,13 @@
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: /obstacle_markers
+      Name: Obstacle Markers
+      Namespaces:
+        obstacles: true
+  Enabled: true
+  Global Options:
+    Background Color: 48; 48; 48
+    Fixed Frame: map
