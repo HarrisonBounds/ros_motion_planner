@@ -7,8 +7,8 @@ def generate_launch_description():
     # Path to the RViz configuration file
     rviz_config_file = os.path.join(
         get_package_share_directory('motion_planner'),
-        'rviz',
-        'obstacle_map.rviz'
+        'config',
+        'config.rviz'
     )
 
     # Node to publish obstacle markers
