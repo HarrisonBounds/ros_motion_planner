@@ -15,7 +15,8 @@ def generate_launch_description():
         name='map_server',
         namespace='',  
         output='screen',
-        parameters=[{'yaml_filename': 'maps/map1.yaml'}]
+        parameters=[{'yaml_filename': 'maps/map1.yaml'}],
+        remappings=[("/map", "/map")]
     )
 
     # Transition map_server to active state
