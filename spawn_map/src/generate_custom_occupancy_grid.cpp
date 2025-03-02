@@ -29,7 +29,7 @@ class OccupancyGrid_Publisher : public rclcpp::Node
       }
 
       occupancy_grid_msg.header.stamp = rclcpp::Clock().now();
-      occupancy_grid_msg.header.frame_id = "map_frame";
+      occupancy_grid_msg.header.frame_id = "map";
 
       occupancy_grid_msg.info.resolution = 1;
 
