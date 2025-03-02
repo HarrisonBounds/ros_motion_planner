@@ -7,12 +7,20 @@ find_package(rclcpp REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
+find_package(OpenCV REQUIRED)
 
 # Add the executable
 add_executable(generate_occupancy_grid src/generate_occupancy_grid.cpp)
+add_executable(generate_custom_occupancy_grid src/generate_custom_occupancy_grid.cpp)
 
 #Link dependencies
 ament_target_dependencies(generate_occupancy_grid
+  rclcpp
+  nav_msgs
+  OpenCV
+)
+
+ament_target_dependencies(generate_custom_occupancy_grid
   rclcpp
   nav_msgs
 )
@@ -20,6 +28,11 @@ ament_target_dependencies(generate_occupancy_grid
 #Install the executable
 install(TARGETS
   generate_occupancy_grid
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+install(TARGETS
+  generate_custom_occupancy_grid
   DESTINATION lib/${PROJECT_NAME}
 )
 
