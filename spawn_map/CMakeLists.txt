@@ -9,19 +9,19 @@ find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 
 # Add the executable
-# add_executable(display_map src/display_map.cpp)
+add_executable(generate_occupancy_grid src/generate_occupancy_grid.cpp)
 
-# Link dependencies
-# ament_target_dependencies(display_map
-#   rclcpp
-#   nav_msgs
-# )
+#Link dependencies
+ament_target_dependencies(generate_occupancy_grid
+  rclcpp
+  nav_msgs
+)
 
-# Install the executable
-# install(TARGETS
-#   display_map
-#   DESTINATION lib/${PROJECT_NAME}
-# )
+#Install the executable
+install(TARGETS
+  generate_occupancy_grid
+  DESTINATION lib/${PROJECT_NAME}
+)
 
 # Install launch files
 install(DIRECTORY
