@@ -8,6 +8,7 @@ from launch_ros.event_handlers import OnStateTransition
 from lifecycle_msgs.msg import Transition
 
 def generate_launch_description():
+
     # Create the map server node
     map_server_node = LifecycleNode(
         package='nav2_map_server',
@@ -17,6 +18,16 @@ def generate_launch_description():
         output='screen',
         parameters=[{'yaml_filename': 'maps/map1.yaml'}],
         remappings=[("/map", "/map")]
+    )
+
+    lifecycle_manager_node = Node(
+        package='nav2_lifecycle_manager',
+        executable='lifecycle_manager',
+        name='lifecycle_manager',
+        parameters=[{
+                'node_names': ['map_server']  # Add map_server as a managed node
+            }],
+        output='screen',
     )
 
     # Transition map_server to active state
@@ -45,6 +56,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         map_server_node,
+        lifecycle_manager_node,
         configure_event,
         activate_event,
         Node(
