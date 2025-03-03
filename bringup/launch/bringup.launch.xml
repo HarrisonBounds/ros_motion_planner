@@ -1,0 +1,15 @@
+<launch>
+
+    <node pkg="spawn_map" exec="generate_custom_occupancy_grid">
+        <remap from="custom_occupancy_grid" to="custom_occupancy_grid"/>
+    </node>
+
+    <node pkg="path_planner" exec="read_grid">
+        <remap from="planned_path" to="planned_path"/>
+        <remap from="path_markers" to="path_markers"/>
+        <remap from="custom_occupancy_grid" to="custom_occupancy_grid"/>
+    </node>
+
+    <node pkg="rviz2" exec="rviz2" args="-d $(find-pkg-share bringup)/config/map_display.rviz"/>
+
+</launch>
