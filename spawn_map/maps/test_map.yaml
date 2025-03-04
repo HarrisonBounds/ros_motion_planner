@@ -1,4 +1,4 @@
-image: $(find-pkg-share your_package)/maps/willow-2010-02-18-0.10.pgm
+image: maps/test_map.pgm
 resolution: 0.100000
 origin: [0.000000, 0.000000, 0.000000]
 negate: 0

@@ -4,6 +4,11 @@
         <remap from="custom_occupancy_grid" to="custom_occupancy_grid"/>
     </node>
 
+    <!-- <node pkg="nav2_map_server" exec="map_server" >
+        <param name="yaml_filename" value="$(find-pkg-share spawn_map)/maps/test_map.yaml"/>
+        <remap from="map" to="map"/>
+    </node> -->
+
     <node pkg="path_planner" exec="read_grid">
         <remap from="planned_path" to="planned_path"/>
         <remap from="path_markers" to="path_markers"/>
