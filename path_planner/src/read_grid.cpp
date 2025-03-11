@@ -5,6 +5,8 @@
 #include <visualization_msgs/msg/marker_array.hpp>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include <interactive_markers/interactive_marker_server.hpp>
+#include <interactive_markers/menu_handler.hpp>
 #include <queue>
 #include <unordered_map>
 #include <vector>
@@ -33,7 +35,6 @@ namespace std {
 }
 
 // Structure to represent a node in the A* algorithm
-// Renamed from 'Node' to 'AStarNode' to avoid conflict with rclcpp::Node
 struct AStarNode {
     GridCell cell;
     double g_cost;  // Cost from start to current node
@@ -57,13 +58,119 @@ public:
         // Publisher for the planned path
         path_pub_ = this->create_publisher<nav_msgs::msg::Path>("/planned_path", 10);
         
-        // Publisher for markers (start/goal)
-        marker_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("/path_markers", 10);
+        // Initialize start and goal positions
+        start_x_ = 5.0;
+        start_y_ = 0.0;
+        goal_x_ = 18.0;
+        goal_y_ = 15.0;
+        
+        // Create the interactive marker server
+        server_ = std::make_shared<interactive_markers::InteractiveMarkerServer>(
+            "path_planner_markers", get_node_base_interface(), get_node_clock_interface(),
+            get_node_logging_interface(), get_node_topics_interface(), get_node_services_interface());
         
         RCLCPP_INFO(this->get_logger(), "A* Path planner node initialized.");
     }
+    
+    // Initialize interactive markers after receiving the occupancy grid
+    void initializeInteractiveMarkers() {
+        // Create start marker
+        visualization_msgs::msg::InteractiveMarker start_marker;
+        start_marker.header.frame_id = "map";
+        start_marker.header.stamp = this->now();
+        start_marker.name = "start_position";
+        start_marker.description = "Start Position - Drag to move";
+        start_marker.pose.position.x = start_x_;
+        start_marker.pose.position.y = start_y_;
+        start_marker.pose.position.z = 0.0;
+        
+        // Create a control for the marker
+        visualization_msgs::msg::InteractiveMarkerControl control;
+        control.orientation.w = 1;
+        control.orientation.x = 0;
+        control.orientation.y = 1;
+        control.orientation.z = 0;
+        control.name = "move_plane";
+        control.interaction_mode = visualization_msgs::msg::InteractiveMarkerControl::MOVE_PLANE;
+        start_marker.controls.push_back(control);
+        
+        // Add a visual marker
+        visualization_msgs::msg::Marker visual_marker;
+        visual_marker.type = visualization_msgs::msg::Marker::SPHERE;
+        visual_marker.scale.x = 0.5;
+        visual_marker.scale.y = 0.5;
+        visual_marker.scale.z = 0.5;
+        visual_marker.color.r = 0.0;
+        visual_marker.color.g = 1.0;
+        visual_marker.color.b = 0.0;
+        visual_marker.color.a = 1.0;
+        
+        // Add the visual marker to a control
+        visualization_msgs::msg::InteractiveMarkerControl visual_control;
+        visual_control.always_visible = true;
+        visual_control.markers.push_back(visual_marker);
+        start_marker.controls.push_back(visual_control);
+        
+        // Add the marker to the server
+        server_->insert(start_marker, 
+            std::bind(&PathPlanner::processStartFeedback, this, std::placeholders::_1));
+        
+        // Create goal marker (similar to start marker but with red color)
+        visualization_msgs::msg::InteractiveMarker goal_marker = start_marker;
+        goal_marker.name = "goal_position";
+        goal_marker.description = "Goal Position - Drag to move";
+        goal_marker.pose.position.x = goal_x_;
+        goal_marker.pose.position.y = goal_y_;
+        
+        // Change the color to red for the goal marker
+        goal_marker.controls[1].markers[0].color.r = 1.0;
+        goal_marker.controls[1].markers[0].color.g = 0.0;
+        goal_marker.controls[1].markers[0].color.b = 0.0;
+        
+        // Add the marker to the server
+        server_->insert(goal_marker, 
+            std::bind(&PathPlanner::processGoalFeedback, this, std::placeholders::_1));
+        
+        // Apply changes to the server
+        server_->applyChanges();
+    }
 
 private:
+    // Callback for the start position marker feedback
+    void processStartFeedback(const visualization_msgs::msg::InteractiveMarkerFeedback::ConstSharedPtr &feedback) {
+        if (feedback->event_type == visualization_msgs::msg::InteractiveMarkerFeedback::POSE_UPDATE) {
+            start_x_ = feedback->pose.position.x;
+            start_y_ = feedback->pose.position.y;
+            RCLCPP_INFO(this->get_logger(), "Start position updated to: (%.2f, %.2f)", start_x_, start_y_);
+            
+            // Recompute path
+            updatePath();
+        }
+    }
+    
+    // Callback for the goal position marker feedback
+    void processGoalFeedback(const visualization_msgs::msg::InteractiveMarkerFeedback::ConstSharedPtr &feedback) {
+        if (feedback->event_type == visualization_msgs::msg::InteractiveMarkerFeedback::POSE_UPDATE) {
+            goal_x_ = feedback->pose.position.x;
+            goal_y_ = feedback->pose.position.y;
+            RCLCPP_INFO(this->get_logger(), "Goal position updated to: (%.2f, %.2f)", goal_x_, goal_y_);
+            
+            // Recompute path
+            updatePath();
+        }
+    }
+    
+    // Function to update the path when markers are moved
+    void updatePath() {
+        if (!grid_initialized_) {
+            RCLCPP_WARN(this->get_logger(), "Cannot update path: occupancy grid not received yet");
+            return;
+        }
+        
+        nav_msgs::msg::Path path = computeAStarPath(start_x_, start_y_, goal_x_, goal_y_);
+        path_pub_->publish(path);
+    }
+    
     // Callback for the occupancy grid
     void occupancyGridCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
         RCLCPP_INFO(this->get_logger(), "Received occupancy grid. Planning path with A*...");
@@ -71,79 +178,16 @@ private:
         // Store the grid info for path planning
         grid_info_ = msg->info;
         occupancy_data_ = msg->data;
+        grid_initialized_ = true;
         
-        // Define start and goal positions (in meters)
-        double start_x = 5.0, start_y = 0.0;
-        double goal_x = 18.0, goal_y = 15.0;
+        // Initialize interactive markers after receiving the first grid
+        if (!markers_initialized_) {
+            initializeInteractiveMarkers();
+            markers_initialized_ = true;
+        }
         
-        // Compute path using A*
-        nav_msgs::msg::Path path = computeAStarPath(start_x, start_y, goal_x, goal_y);
-        
-        // Publish the path
-        path_pub_->publish(path);
-        
-        // Publish start and goal markers
-        publishStartGoalMarkers(start_x, start_y, goal_x, goal_y);
-        
-        RCLCPP_INFO(this->get_logger(), "A* path published to /planned_path.");
-    }
-    
-    // Function to publish markers for start and goal
-    void publishStartGoalMarkers(double start_x, double start_y, double goal_x, double goal_y) {
-        visualization_msgs::msg::MarkerArray marker_array;
-        
-        // Create start marker
-        visualization_msgs::msg::Marker start_marker;
-        start_marker.header.frame_id = "map";
-        start_marker.header.stamp = this->now();
-        start_marker.ns = "path_points";
-        start_marker.id = 0;
-        start_marker.type = visualization_msgs::msg::Marker::SPHERE;
-        start_marker.action = visualization_msgs::msg::Marker::ADD;
-        
-        // Set the marker position (start point)
-        start_marker.pose.position.x = start_x;
-        start_marker.pose.position.y = start_y;
-        start_marker.pose.position.z = 0.0;
-        
-        // Set orientation
-        start_marker.pose.orientation.x = 0.0;
-        start_marker.pose.orientation.y = 0.0;
-        start_marker.pose.orientation.z = 0.0;
-        start_marker.pose.orientation.w = 1.0;
-        
-        // Set the marker scale
-        start_marker.scale.x = 0.5;
-        start_marker.scale.y = 0.5;
-        start_marker.scale.z = 0.5;
-        
-        // Set the marker color (green for start)
-        start_marker.color.r = 0.0;
-        start_marker.color.g = 1.0;
-        start_marker.color.b = 0.0;
-        start_marker.color.a = 1.0;
-        
-        start_marker.lifetime = rclcpp::Duration::from_seconds(0);  // 0 means forever
-        
-        // Create goal marker
-        visualization_msgs::msg::Marker goal_marker = start_marker;
-        goal_marker.id = 1;
-        
-        // Set the marker position (goal point)
-        goal_marker.pose.position.x = goal_x;
-        goal_marker.pose.position.y = goal_y;
-        
-        // Set the marker color (red for goal)
-        goal_marker.color.r = 1.0;
-        goal_marker.color.g = 0.0;
-        goal_marker.color.b = 0.0;
-        
-        // Add markers to the array
-        marker_array.markers.push_back(start_marker);
-        marker_array.markers.push_back(goal_marker);
-        
-        // Publish the marker array
-        marker_pub_->publish(marker_array);
+        // Compute initial path
+        updatePath();
     }
     
     // Convert world coordinates to grid cell
@@ -178,23 +222,6 @@ private:
                 occupancy_data_[index] < 50);  // Threshold for occupancy
     }
     
-    // Check if a cell is an obstacle
-    bool isObstacle(const GridCell& cell) {
-        // First check if the cell is valid (within bounds)
-        if (cell.x < 0 || cell.y < 0 || 
-            cell.x >= static_cast<int>(grid_info_.width) || 
-            cell.y >= static_cast<int>(grid_info_.height)) {
-            return true;  // Treat out-of-bounds as obstacles
-        }
-        
-        // Get the index in the 1D array
-        int index = cell.y * grid_info_.width + cell.x;
-        
-        // Check if the cell is occupied
-        return (index < static_cast<int>(occupancy_data_.size()) && 
-                occupancy_data_[index] >= 50);  // Threshold for occupancy
-    }
-    
     // Calculate the Euclidean distance heuristic
     double calculateHeuristic(const GridCell& current, const GridCell& goal) {
         return std::sqrt(std::pow(current.x - goal.x, 2) + std::pow(current.y - goal.y, 2));
@@ -215,12 +242,12 @@ private:
         
         // Check if start and goal cells are valid
         if (!isValidCell(start_cell)) {
-            RCLCPP_ERROR(this->get_logger(), "Start position is invalid or occupied!");
+            RCLCPP_WARN(this->get_logger(), "Start position is invalid or occupied!");
             return path;
         }
         
         if (!isValidCell(goal_cell)) {
-            RCLCPP_ERROR(this->get_logger(), "Goal position is invalid or occupied!");
+            RCLCPP_WARN(this->get_logger(), "Goal position is invalid or occupied!");
             return path;
         }
         
@@ -230,7 +257,7 @@ private:
             {1, 1}, {-1, 1}, {-1, -1}, {1, -1}  // diagonals
         };
         
-        // Priority queue for open list - use AStarNode instead of Node
+        // Priority queue for open list
         std::priority_queue<AStarNode, std::vector<AStarNode>, std::greater<AStarNode>> open_list;
         
         // Closed set to track visited cells
@@ -239,7 +266,7 @@ private:
         // Parent map to reconstruct the path
         std::unordered_map<GridCell, GridCell> parent_map;
         
-        // Add start node to open list - use AStarNode instead of Node
+        // Add start node to open list
         AStarNode start_node = {start_cell, 0, calculateHeuristic(start_cell, goal_cell), 
                           calculateHeuristic(start_cell, goal_cell), start_cell};
         open_list.push(start_node);
@@ -252,7 +279,7 @@ private:
         
         // A* algorithm main loop
         while (!open_list.empty()) {
-            // Get the node with the lowest f_cost - use AStarNode instead of Node
+            // Get the node with the lowest f_cost
             AStarNode current = open_list.top();
             open_list.pop();
             
@@ -289,7 +316,7 @@ private:
                     cost_so_far[neighbor] = new_cost;
                     double heuristic = calculateHeuristic(neighbor, goal_cell);
                     
-                    // Create a new node for the neighbor - use AStarNode instead of Node
+                    // Create a new node for the neighbor
                     AStarNode neighbor_node = {neighbor, new_cost, heuristic, new_cost + heuristic, current.cell};
                     open_list.push(neighbor_node);
                     
@@ -386,11 +413,20 @@ private:
     
     // Publishers
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub_;
-    rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
+    
+    // Interactive marker server
+    std::shared_ptr<interactive_markers::InteractiveMarkerServer> server_;
     
     // Occupancy grid data
     nav_msgs::msg::MapMetaData grid_info_;
     std::vector<int8_t> occupancy_data_;
+    
+    // Start and goal positions
+    double start_x_, start_y_, goal_x_, goal_y_;
+    
+    // Flags
+    bool grid_initialized_ = false;
+    bool markers_initialized_ = false;
 };
 
 int main(int argc, char** argv) {
