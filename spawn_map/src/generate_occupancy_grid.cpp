@@ -31,11 +31,11 @@ private:
         std::string image_file_path = "/home/harrison-bounds/ws/motionplanner/src/ros_motion_planner/spawn_map/maps/maze_map.png";
 
         // Hardcoded metadata
-        double resolution = 0.01;                     // meters per pixel
+        double resolution = 0.02;                     // Increase resolution (reduce precision) to make the map smaller
         std::vector<double> origin = {0.0, 0.0, 0.0}; // x, y, z
-        double free_thresh = 0.196;                   // threshold for free space
-        double occupied_thresh = 0.65;                // threshold for occupied space
-        bool negate = false;                          // whether to negate the image (black/white inversion)
+        double free_thresh = 0.2;                     // Adjust thresholds to better classify free/occupied space
+        double occupied_thresh = 0.6;
+        bool negate = false;
 
         // Load the PNG image
         map_image_ = cv::imread(image_file_path, cv::IMREAD_GRAYSCALE);
@@ -45,11 +45,15 @@ private:
             return;
         }
 
+        // Downsample the map (reduce resolution)
+        cv::Mat resized_map;
+        cv::resize(map_image_, resized_map, cv::Size(), 0.5, 0.5, cv::INTER_AREA); // Reduce size by 50%
+
         // Initialize the OccupancyGrid message
         occupancy_grid_msg_.header.frame_id = "map";
         occupancy_grid_msg_.info.resolution = resolution;
-        occupancy_grid_msg_.info.width = map_image_.cols;
-        occupancy_grid_msg_.info.height = map_image_.rows;
+        occupancy_grid_msg_.info.width = resized_map.cols;
+        occupancy_grid_msg_.info.height = resized_map.rows;
         occupancy_grid_msg_.info.origin.position.x = origin[0];
         occupancy_grid_msg_.info.origin.position.y = origin[1];
         occupancy_grid_msg_.info.origin.position.z = origin[2];
@@ -59,32 +63,32 @@ private:
         occupancy_grid_msg_.info.origin.orientation.w = 1.0;
 
         // Convert the image data to the occupancy grid data
-        occupancy_grid_msg_.data.resize(map_image_.cols * map_image_.rows);
-        for (int y = 0; y < map_image_.rows; y++)
+        occupancy_grid_msg_.data.resize(resized_map.cols * resized_map.rows);
+        for (int y = 0; y < resized_map.rows; y++)
         {
-            for (int x = 0; x < map_image_.cols; x++)
+            for (int x = 0; x < resized_map.cols; x++)
             {
-                int pixel_value = map_image_.at<uchar>(y, x);
+                int pixel_value = resized_map.at<uchar>(y, x);
                 if (negate)
                 {
                     pixel_value = 255 - pixel_value;
                 }
                 if (pixel_value < free_thresh * 255)
                 {
-                    occupancy_grid_msg_.data[y * map_image_.cols + x] = 100; // Free
+                    occupancy_grid_msg_.data[y * resized_map.cols + x] = 100; // Free
                 }
                 else if (pixel_value > occupied_thresh * 255)
                 {
-                    occupancy_grid_msg_.data[y * map_image_.cols + x] = 0; // Occupied
+                    occupancy_grid_msg_.data[y * resized_map.cols + x] = 0; // Occupied
                 }
                 else
                 {
-                    occupancy_grid_msg_.data[y * map_image_.cols + x] = 0;
+                    occupancy_grid_msg_.data[y * resized_map.cols + x] = 0; // Unknown
                 }
             }
         }
 
-        RCLCPP_INFO(this->get_logger(), "Map loaded successfully!");
+        RCLCPP_INFO(this->get_logger(), "Map loaded and downsampled successfully!");
     }
 
     void publish_map()
