@@ -1,3 +1,10 @@
+/**
+ * @file generate_occupancy_grid.cpp
+ * @brief Publishes an occupancy grid map from a PNG image for navigation
+ * @author Harrison Bounds
+ * @date 2025-03-13
+ */
+
 #include <chrono>
 #include <functional>
 #include <memory>
@@ -8,9 +15,23 @@
 
 using namespace std::chrono_literals;
 
+/**
+ * @class MapPublisher
+ * @brief ROS2 node for publishing occupancy grid maps from PNG images
+ *
+ * This class loads a PNG image, converts it to an occupancy grid map,
+ * and periodically publishes it on the "/custom_occupancy_grid" topic.
+ * The image is processed to create a map suitable for robot navigation.
+ */
 class MapPublisher : public rclcpp::Node
 {
 public:
+    /**
+     * @brief Constructor for MapPublisher
+     *
+     * Initializes the node, creates a publisher for the occupancy grid map,
+     * loads the map from a PNG file, and sets up a timer to publish the map periodically.
+     */
     MapPublisher()
         : Node("map_publisher")
     {
@@ -25,6 +46,17 @@ public:
     }
 
 private:
+    /**
+     * @brief Loads a PNG image and converts it to an occupancy grid map
+     *
+     * This method:
+     * 1. Loads a PNG image from the specified file path
+     * 2. Downsamples the image to reduce resolution
+     * 3. Converts the grayscale image to an occupancy grid representation
+     * 4. Classifies pixels as free, occupied, or unknown based on thresholds
+     *
+     * @note The map is stored in the occupancy_grid_msg_ member variable
+     */
     void load_map()
     {
         // Path to the PNG map file (update this path as needed)
@@ -91,6 +123,13 @@ private:
         RCLCPP_INFO(this->get_logger(), "Map loaded and downsampled successfully!");
     }
 
+    /**
+     * @brief Publishes the occupancy grid map
+     *
+     * This method is called periodically by the timer to publish the
+     * pre-processed occupancy grid map to the "/custom_occupancy_grid" topic.
+     * It updates the timestamp in the message header before publishing.
+     */
     void publish_map()
     {
         // Update the timestamp
@@ -101,13 +140,26 @@ private:
         RCLCPP_INFO(this->get_logger(), "Map published!");
     }
 
+    /** @brief Publisher for the occupancy grid map */
     rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr map_pub;
+
+    /** @brief Timer for periodic map publishing */
     rclcpp::TimerBase::SharedPtr timer_;
 
-    cv::Mat map_image_;                               // Store the map image
-    nav_msgs::msg::OccupancyGrid occupancy_grid_msg_; // Store the occupancy grid message
+    /** @brief Original map image loaded from file */
+    cv::Mat map_image_;
+
+    /** @brief Processed occupancy grid message ready for publishing */
+    nav_msgs::msg::OccupancyGrid occupancy_grid_msg_;
 };
 
+/**
+ * @brief Main function to initialize and run the MapPublisher node
+ *
+ * @param argc Number of command line arguments
+ * @param argv Command line arguments
+ * @return int Exit status
+ */
 int main(int argc, char *argv[])
 {
     rclcpp::init(argc, argv);

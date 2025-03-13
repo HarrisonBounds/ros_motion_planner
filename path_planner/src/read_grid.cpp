@@ -18,12 +18,19 @@
 
 using std::placeholders::_1;
 
-// Structure to represent a grid cell
+/**
+ * @brief Structure to represent a grid cell in the occupancy grid.
+ */
 struct GridCell
 {
-    int x;
-    int y;
+    int x; ///< X-coordinate of the grid cell.
+    int y; ///< Y-coordinate of the grid cell.
 
+    /**
+     * @brief Equality operator for GridCell.
+     * @param other The other GridCell to compare with.
+     * @return True if the cells are equal, false otherwise.
+     */
     bool operator==(const GridCell &other) const
     {
         return x == other.x && y == other.y;
@@ -36,6 +43,11 @@ namespace std
     template <>
     struct hash<GridCell>
     {
+        /**
+         * @brief Hash function for GridCell.
+         * @param cell The GridCell to hash.
+         * @return The hash value of the GridCell.
+         */
         size_t operator()(const GridCell &cell) const
         {
             return hash<int>()(cell.x) ^ (hash<int>()(cell.y) << 1);
@@ -43,25 +55,37 @@ namespace std
     };
 }
 
-// Structure to represent a node in the A* algorithm
+/**
+ * @brief Structure to represent a node in the A* algorithm.
+ */
 struct AStarNode
 {
-    GridCell cell;
-    double g_cost; // Cost from start to current node
-    double h_cost; // Heuristic cost from current node to goal
-    double f_cost; // Total cost (g + h)
-    GridCell parent;
+    GridCell cell;   ///< The grid cell represented by this node.
+    double g_cost;   ///< Cost from the start node to this node.
+    double h_cost;   ///< Heuristic cost from this node to the goal.
+    double f_cost;   ///< Total cost (g_cost + h_cost).
+    GridCell parent; ///< Parent cell of this node in the path.
 
-    // Compare nodes for priority queue (lower f_cost has higher priority)
+    /**
+     * @brief Comparison operator for AStarNode (used in priority queue).
+     * @param other The other AStarNode to compare with.
+     * @return True if this node has a higher f_cost than the other node.
+     */
     bool operator>(const AStarNode &other) const
     {
         return f_cost > other.f_cost;
     }
 };
 
+/**
+ * @brief ROS2 node for path planning using the A* algorithm.
+ */
 class PathPlanner : public rclcpp::Node
 {
 public:
+    /**
+     * @brief Constructor for the PathPlanner node.
+     */
     PathPlanner() : rclcpp::Node("path_planner")
     {
         // Subscriber for the occupancy grid
@@ -91,7 +115,9 @@ public:
         RCLCPP_INFO(this->get_logger(), "A* Path planner node initialized.");
     }
 
-    // Initialize interactive markers after receiving the occupancy grid
+    /**
+     * @brief Initialize interactive markers for start and goal positions.
+     */
     void initializeInteractiveMarkers()
     {
         // Create start marker
@@ -156,7 +182,10 @@ public:
     }
 
 private:
-    // Callback for the start position marker feedback
+    /**
+     * @brief Callback for the start position marker feedback.
+     * @param feedback The feedback message from the interactive marker.
+     */
     void processStartFeedback(const visualization_msgs::msg::InteractiveMarkerFeedback::ConstSharedPtr &feedback)
     {
         if (feedback->event_type == visualization_msgs::msg::InteractiveMarkerFeedback::POSE_UPDATE)
@@ -170,7 +199,10 @@ private:
         }
     }
 
-    // Callback for the goal position marker feedback
+    /**
+     * @brief Callback for the goal position marker feedback.
+     * @param feedback The feedback message from the interactive marker.
+     */
     void processGoalFeedback(const visualization_msgs::msg::InteractiveMarkerFeedback::ConstSharedPtr &feedback)
     {
         if (feedback->event_type == visualization_msgs::msg::InteractiveMarkerFeedback::POSE_UPDATE)
@@ -184,7 +216,10 @@ private:
         }
     }
 
-    // Debounced path update function
+    /**
+     * @brief Debounced path update function.
+     * This function is triggered after a delay to avoid frequent updates.
+     */
     void debouncedUpdatePath()
     {
         if (!grid_initialized_)
@@ -203,7 +238,10 @@ private:
         path_pub_->publish(path);
     }
 
-    // Callback for the occupancy grid
+    /**
+     * @brief Callback for the occupancy grid.
+     * @param msg The occupancy grid message.
+     */
     void occupancyGridCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg)
     {
         RCLCPP_INFO(this->get_logger(), "Received occupancy grid. Planning path with A*...");
@@ -224,7 +262,12 @@ private:
         debouncedUpdatePath();
     }
 
-    // Convert world coordinates to grid cell
+    /**
+     * @brief Convert world coordinates to grid cell coordinates.
+     * @param x The x-coordinate in world space.
+     * @param y The y-coordinate in world space.
+     * @return The corresponding grid cell.
+     */
     GridCell worldToGrid(double x, double y)
     {
         int grid_x = static_cast<int>((x - grid_info_.origin.position.x) / grid_info_.resolution);
@@ -232,7 +275,12 @@ private:
         return {grid_x, grid_y};
     }
 
-    // Convert grid cell to world coordinates
+    /**
+     * @brief Convert grid cell coordinates to world coordinates.
+     * @param grid_x The x-coordinate in grid space.
+     * @param grid_y The y-coordinate in grid space.
+     * @return The corresponding world coordinates as a pair (x, y).
+     */
     std::pair<double, double> gridToWorld(int grid_x, int grid_y)
     {
         double world_x = grid_x * grid_info_.resolution + grid_info_.origin.position.x;
@@ -240,7 +288,11 @@ private:
         return {world_x, world_y};
     }
 
-    // Check if a grid cell is valid (within bounds and not occupied)
+    /**
+     * @brief Check if a grid cell is valid (within bounds and not occupied).
+     * @param cell The grid cell to check.
+     * @return True if the cell is valid, false otherwise.
+     */
     bool isValidCell(const GridCell &cell)
     {
         // Check bounds
@@ -260,13 +312,25 @@ private:
                 occupancy_data_[index] < 50); // Threshold for occupancy
     }
 
-    // Calculate the Euclidean distance heuristic
+    /**
+     * @brief Calculate the Euclidean distance heuristic.
+     * @param current The current grid cell.
+     * @param goal The goal grid cell.
+     * @return The Euclidean distance between the two cells.
+     */
     double calculateHeuristic(const GridCell &current, const GridCell &goal)
     {
         return std::sqrt(std::pow(current.x - goal.x, 2) + std::pow(current.y - goal.y, 2));
     }
 
-    // Function to compute a path using A* algorithm
+    /**
+     * @brief Compute a path using the A* algorithm.
+     * @param start_x The x-coordinate of the start position in world space.
+     * @param start_y The y-coordinate of the start position in world space.
+     * @param goal_x The x-coordinate of the goal position in world space.
+     * @param goal_y The y-coordinate of the goal position in world space.
+     * @return The planned path as a nav_msgs::msg::Path message.
+     */
     nav_msgs::msg::Path computeAStarPath(double start_x, double start_y, double goal_x, double goal_y)
     {
         nav_msgs::msg::Path path;
