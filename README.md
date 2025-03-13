@@ -13,13 +13,27 @@ These packages can read black and white PNG maps and display them as an occupanc
 
 Please make sure you have ROS2 Jazzy installed on your machine. Instructions can be found here: https://docs.ros.org/en/jazzy/Installation.html
 
-Clone this repo
-
-### Running the Default Map (Maze)
-After installing and cloning, you can run the packages separately to see how they work individuallly, or run the launch file in the bringup package as shown below.
+Setup your files similar to this (need a workspace, src, and repo)
 
 ```
+cd ~/ws/pathplanner/src/
+
+git clone <this repo>
+
+cd ../..
+
+colcon build
+
+Ctrl+Shift+T (Open new terminal tab)
+
+source install/setup.bash
+
 ros2 launch bringup bringup.launch.xml
+
+OR 
+
+Run each package individually to see how they work separately
+
 ```
 
 ### Running a Custom Map
