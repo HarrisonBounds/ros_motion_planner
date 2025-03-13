@@ -1,6 +1,6 @@
 <launch>
 
-    <node pkg="spawn_map" exec="generate_custom_occupancy_grid">
+    <node pkg="spawn_map" exec="generate_occupancy_grid">
         <remap from="custom_occupancy_grid" to="custom_occupancy_grid"/>
     </node>
 

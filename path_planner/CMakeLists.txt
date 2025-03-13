@@ -13,6 +13,8 @@ find_package(geometry_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
+find_package(interactive_markers REQUIRED)
+
 
 add_executable(read_grid src/read_grid.cpp)
 
@@ -23,6 +25,7 @@ ament_target_dependencies(read_grid
   tf2
   tf2_geometry_msgs
   visualization_msgs
+  interactive_markers
 )
 
 #Install the executable

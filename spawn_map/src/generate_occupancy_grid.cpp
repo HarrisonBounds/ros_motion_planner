@@ -2,95 +2,116 @@
 #include <functional>
 #include <memory>
 #include <string>
-
+#include <opencv2/opencv.hpp>
 #include "rclcpp/rclcpp.hpp"
 #include "nav_msgs/msg/occupancy_grid.hpp"
-#include <opencv2/opencv.hpp>
 
 using namespace std::chrono_literals;
-class OccupancyGrid_Publisher : public rclcpp::Node
+
+class MapPublisher : public rclcpp::Node
 {
 public:
-    OccupancyGrid_Publisher()
-        : Node("occupancy_grid_publisher")
+    MapPublisher()
+        : Node("map_publisher")
     {
-        og_pub = this->create_publisher<nav_msgs::msg::OccupancyGrid>("custom_occupancy_grid", 10);
-        og_timer = this->create_wall_timer(500ms, std::bind(&OccupancyGrid_Publisher::og_callback, this));
+        // Publisher for the occupancy grid
+        map_pub = this->create_publisher<nav_msgs::msg::OccupancyGrid>("/custom_occupancy_grid", 10);
+
+        // Load the map once
+        load_map();
+
+        // Create a timer to publish the map periodically
+        timer_ = this->create_wall_timer(500ms, std::bind(&MapPublisher::publish_map, this));
     }
 
 private:
-    void og_callback()
+    void load_map()
     {
+        // Path to the PNG map file (update this path as needed)
+        std::string image_file_path = "/home/harrison-bounds/ws/motionplanner/src/ros_motion_planner/spawn_map/maps/maze_map.png";
 
-        auto occupancy_grid_msg = nav_msgs::msg::OccupancyGrid();
-        
+        // Hardcoded metadata
+        double resolution = 0.02;                     // Increase resolution (reduce precision) to make the map smaller
+        std::vector<double> origin = {0.0, 0.0, 0.0}; // x, y, z
+        double free_thresh = 0.2;                     // Adjust thresholds to better classify free/occupied space
+        double occupied_thresh = 0.6;
+        bool negate = false;
 
-        // Load the PGM file
-        std::string pgm_file = "maps/test_map.pgm";
-        cv::Mat map_image = cv::imread(pgm_file, cv::IMREAD_GRAYSCALE);
-
-        if (map_image.empty()) {
-            std::cerr << "Error: Could not load image file " << pgm_file << std::endl;
+        // Load the PNG image
+        map_image_ = cv::imread(image_file_path, cv::IMREAD_GRAYSCALE);
+        if (map_image_.empty())
+        {
+            RCLCPP_ERROR(this->get_logger(), "Failed to load map image: %s", image_file_path.c_str());
+            return;
         }
 
-        int width = map_image.cols;
-        int height = map_image.rows;
+        // Downsample the map (reduce resolution)
+        cv::Mat resized_map;
+        cv::resize(map_image_, resized_map, cv::Size(), 0.5, 0.5, cv::INTER_AREA); // Reduce size by 50%
 
-        const int grid_size = width*height;
+        // Initialize the OccupancyGrid message
+        occupancy_grid_msg_.header.frame_id = "map";
+        occupancy_grid_msg_.info.resolution = resolution;
+        occupancy_grid_msg_.info.width = resized_map.cols;
+        occupancy_grid_msg_.info.height = resized_map.rows;
+        occupancy_grid_msg_.info.origin.position.x = origin[0];
+        occupancy_grid_msg_.info.origin.position.y = origin[1];
+        occupancy_grid_msg_.info.origin.position.z = origin[2];
+        occupancy_grid_msg_.info.origin.orientation.x = 0.0;
+        occupancy_grid_msg_.info.origin.orientation.y = 0.0;
+        occupancy_grid_msg_.info.origin.orientation.z = 0.0;
+        occupancy_grid_msg_.info.origin.orientation.w = 1.0;
 
-        std::vector<signed char> og_array(grid_size);
+        // Convert the image data to the occupancy grid data
+        occupancy_grid_msg_.data.resize(resized_map.cols * resized_map.rows);
+        for (int y = 0; y < resized_map.rows; y++)
+        {
+            for (int x = 0; x < resized_map.cols; x++)
+            {
+                int pixel_value = resized_map.at<uchar>(y, x);
+                if (negate)
+                {
+                    pixel_value = 255 - pixel_value;
+                }
+                if (pixel_value < free_thresh * 255)
+                {
+                    occupancy_grid_msg_.data[y * resized_map.cols + x] = 100; // Free
+                }
+                else if (pixel_value > occupied_thresh * 255)
+                {
+                    occupancy_grid_msg_.data[y * resized_map.cols + x] = 0; // Occupied
+                }
+                else
+                {
+                    occupancy_grid_msg_.data[y * resized_map.cols + x] = 0; // Unknown
+                }
+            }
+        }
 
-        std::cout << "Image loaded successfully!" << std::endl;
-        std::cout << "Width: " << width << ", Height: " << height << std::endl;
-
-         // Loop through the grid and assign values
-         for (int i = 0; i < grid_size; i++)
-         {
-             // Calculate the row and column in the grid
-             int row = i / width;
-             int col = i % width;
- 
-             // Get the pixel value from the image
-             uint8_t pixel_value = map_image.at<uint8_t>(row, col);
- 
-             // Map the pixel value to the occupancy grid format
-             if (pixel_value == 0) {
-                 og_array[i] = 100; // Occupied (wall)
-             } else if (pixel_value == 255) {
-                 og_array[i] = 0; // Free space
-             } else {
-                 og_array[i] = -1; // Unknown space
-             }
-         }
-
-        occupancy_grid_msg.header.stamp = rclcpp::Clock().now();
-        occupancy_grid_msg.header.frame_id = "map_frame";
-
-        occupancy_grid_msg.info.resolution = 1;
-
-        occupancy_grid_msg.info.width = 12;
-        occupancy_grid_msg.info.height = 10;
-
-        occupancy_grid_msg.info.origin.position.x = 0.0;
-        occupancy_grid_msg.info.origin.position.y = 0.0;
-        occupancy_grid_msg.info.origin.position.z = 0.0;
-        occupancy_grid_msg.info.origin.orientation.x = 0.0;
-        occupancy_grid_msg.info.origin.orientation.y = 0.0;
-        occupancy_grid_msg.info.origin.orientation.z = 0.0;
-        occupancy_grid_msg.info.origin.orientation.w = 1.0;
-        occupancy_grid_msg.data = og_array;
-
-        og_pub->publish(occupancy_grid_msg);
+        RCLCPP_INFO(this->get_logger(), "Map loaded and downsampled successfully!");
     }
 
-    rclcpp::TimerBase::SharedPtr og_timer;
-    rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr og_pub;
+    void publish_map()
+    {
+        // Update the timestamp
+        occupancy_grid_msg_.header.stamp = rclcpp::Clock().now();
+
+        // Publish the map
+        map_pub->publish(occupancy_grid_msg_);
+        RCLCPP_INFO(this->get_logger(), "Map published!");
+    }
+
+    rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr map_pub;
+    rclcpp::TimerBase::SharedPtr timer_;
+
+    cv::Mat map_image_;                               // Store the map image
+    nav_msgs::msg::OccupancyGrid occupancy_grid_msg_; // Store the occupancy grid message
 };
 
 int main(int argc, char *argv[])
 {
     rclcpp::init(argc, argv);
-    rclcpp::spin(std::make_shared<OccupancyGrid_Publisher>());
+    rclcpp::spin(std::make_shared<MapPublisher>());
     rclcpp::shutdown();
     return 0;
 }
